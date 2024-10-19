@@ -8,6 +8,8 @@ import itertools
 from tqdm import tqdm
 
 
+# TODO:  Add GUI
+# TODO:  Add a ban-also file
 # TODO:  Add code to apply weights to each pillar
 
 
@@ -19,17 +21,16 @@ SET_DECK_LIST_SEEN = set()
 D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ = pd.read_pickle('d_card_freq_cnt_to_brickless_freq.pkl')
 
 
-def fitness(df_card_pool, li_deck_list_idxs, i_path_size):
+def fitness(df_card_pool, na_deck_list, i_path_size):
 
-    # Define key variables
-    ls_deck_list = df_card_pool.index[li_deck_list_idxs].tolist()
+    # Determine deck list
+    na_deck_list_idxs = np.where(na_deck_list)[0] // 3
+    ls_deck_list = df_card_pool.index[na_deck_list_idxs].tolist()
 
     # Check permutations
-    i_valid_paths = 0
     lt_valid_paths = []
     for t_path in itertools.chain.from_iterable(itertools.permutations(ls_deck_list, i) for i in range(2, i_path_size+1)):
         if t_path in SET_VALID_PATHS:
-            i_valid_paths += 1
             lt_valid_paths.append(t_path)
         elif t_path in SET_INVALID_PATHS:
             continue
@@ -40,6 +41,7 @@ def fitness(df_card_pool, li_deck_list_idxs, i_path_size):
                     b_valid = False
                     break
             if b_valid:
+                lt_valid_paths.append(t_path)
                 SET_VALID_PATHS.add(t_path)
             else:
                 SET_INVALID_PATHS.add(t_path)
@@ -54,7 +56,7 @@ def fitness(df_card_pool, li_deck_list_idxs, i_path_size):
     i_game_state_path_cnt = np.power(i_game_state_path_cnt, 1.0 / i_path_size)
 
     # Get brickless frequency
-    d_card_freq_cnt = cl.Counter(cl.Counter(li_deck_list_idxs).values())
+    d_card_freq_cnt = cl.Counter(cl.Counter(na_deck_list_idxs).values())
     t_card_freq_cnt = (d_card_freq_cnt[1], d_card_freq_cnt[2], d_card_freq_cnt[3])
     f_brickless_freq = D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ[t_card_freq_cnt]
     f_brickless_freq = round(f_brickless_freq, 2)
@@ -66,7 +68,7 @@ def fitness(df_card_pool, li_deck_list_idxs, i_path_size):
     return na_fitness, d_game_states, lt_valid_paths
 
 
-def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate):
+def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, ls_input_deck_list=None):
 
     # Create initial set of edges
     for s_card in df_card_pool.index:
@@ -104,9 +106,25 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
         li_required_list += li_copies
     na_required_list = np.array(li_required_list)
 
+    # Create a vector for input deck list
+    if ls_input_deck_list:
+        d_input_deck_card_cnts = cl.Counter(ls_input_deck_list)
+        li_input_deck_list = []
+        for s_card in df_card_pool.index:
+            if s_card in d_input_deck_card_cnts:
+                li_copies = [0, 0, 0]
+                for i_idx in range(d_input_deck_card_cnts[s_card]):
+                    li_copies[i_idx] = 1
+            else:
+                li_copies = [0, 0, 0]
+            li_input_deck_list += li_copies
+        lna_input_deck_list = [np.array(li_input_deck_list)]
+    else:
+        lna_input_deck_list = []
+
     # Create deck list feature vectors
-    li_deck_lists = []
-    for _ in range(i_population):
+    li_deck_lists = [] + lna_input_deck_list
+    for _ in range(i_population - len(li_deck_lists)):
         na_deck_list_idxs_required = np.where(na_required_list)[0]
         na_deck_list_idxs_optional = np.random.choice(np.where(na_banned_list - na_required_list)[0], size=i_deck_size - sum(na_required_list), replace=False)
         na_deck_list_idxs = np.concat((na_deck_list_idxs_required, na_deck_list_idxs_optional))
@@ -131,8 +149,7 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
                 continue
 
             # Get fitness
-            na_deck_list_idxs = np.where(na_deck_list)[0] // 3
-            na_fitness, d_path_term_cnt, lt_valid_paths = fitness(df_card_pool, na_deck_list_idxs, i_path_size)
+            na_fitness, d_path_term_cnt, lt_valid_paths = fitness(df_card_pool, na_deck_list, i_path_size)
 
             # Update pareto frontier
             b_dominates_a_deck = np.any(np.any(na_fitness > lna_best_decks_fitness, axis=1))
@@ -153,22 +170,26 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
                 ld_best_decks_path_term_cnt = np.append(ld_best_decks_path_term_cnt, d_path_term_cnt)
 
                 # Update valid paths
-
                 ldlt_best_valid_paths = ldlt_best_valid_paths[np.logical_not(na_strictly_dominated_deck_idx_mask)]
                 ldlt_best_valid_paths = np.append(ldlt_best_valid_paths, {'valid_paths': lt_valid_paths})
 
-            # Mark as seen
-            SET_DECK_LIST_SEEN.add(t_deck_list)
+                # Calculate deck that would be selected
+                if False:
+                    na_best_decks_fitness = np.prod(lna_best_decks_fitness, axis=1)
+                    na_best_deck_fitness = lna_best_decks_fitness[np.argmax(na_best_decks_fitness)]
+                    d_best_deck_path_term_cnt = ld_best_decks_path_term_cnt[np.argmax(na_best_decks_fitness)]
+                    print('\n\n')
+                    print(f'Fitness #1:\t{np.max(na_best_decks_fitness)}')
+                    print(f'Fitness #2:\t{list(na_best_deck_fitness)}')
+                    print(f'Details:\t{d_best_deck_path_term_cnt}')
+                    print(lna_best_decks_fitness.shape) 
 
-        # Calculate deck that would be selected
-        if True:
-            na_best_decks_fitness = np.prod(lna_best_decks_fitness, axis=1)
-            na_best_deck_fitness = lna_best_decks_fitness[np.argmax(na_best_decks_fitness)]
-            d_best_deck_path_term_cnt = ld_best_decks_path_term_cnt[np.argmax(na_best_decks_fitness)]
-            print('\n\n')
-            print(f'Fitness:\t{list(na_best_deck_fitness)}')
-            print(f'Details:\t{d_best_deck_path_term_cnt}')
-            print(lna_best_decks_fitness.shape)       
+                    print('\n\n')
+                    print(lna_best_decks_fitness)
+                    import pdb; pdb.set_trace() 
+
+            # Mark as seen
+            SET_DECK_LIST_SEEN.add(t_deck_list)  
 
         # Choose a new parent population
         na_deck_lists = lna_best_decks[np.random.choice(lna_best_decks.shape[0], size=int(na_deck_lists.shape[0] / 2), replace=True)]
@@ -208,17 +229,14 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
     na_best_deck_fitness = lna_best_decks_fitness[np.argmax(na_best_decks_fitness)]
     d_best_deck_path_term_cnt = ld_best_decks_path_term_cnt[np.argmax(na_best_decks_fitness)]
     print('\n\n')
-    print(f'Fitness:\t{list(na_best_deck_fitness)}')
+    print(f'Fitness #1:\t{np.max(na_best_decks_fitness)}')
+    print(f'Fitness #2:\t{list(na_best_deck_fitness)}')
     print(f'Details:\t{d_best_deck_path_term_cnt}')
-    print(lna_best_decks_fitness.shape)  
+    print(lna_best_decks_fitness.shape)
+    print(na_best_deck)
 
     # Generate best deck list
     ls_best_deck_list = df_card_pool.index[np.where(na_best_deck)[0] // 3].tolist()
-
-
-    print('\n\n--- at end ---')
-    import pdb; pdb.set_trace()
-
 
     # Check that deck adheres to banned list
     for s_card, i_cnt in cl.Counter(ls_best_deck_list).items():
@@ -257,7 +275,22 @@ def main():
         '\nError:\tMatrix contains one or more values that are not 0 or 1'
 
     # Get best deck list
-    ls_best_deck_list = optimize(df_banned_list, df_required_list, df_card_pool, 40, 3, 4, 10000, 0.05)
+    ls_best_deck_list = optimize(
+        df_banned_list=df_banned_list, 
+        df_required_list=df_required_list, 
+        df_card_pool=df_card_pool, 
+        i_deck_size=40, 
+        i_path_size=3, 
+        i_population=4, 
+        i_generations=1000, 
+        f_mutation_rate=0.05,
+        ls_input_deck_list=None,
+    )
+
+
+
+
+
 
 
     import pdb; pdb.set_trace()
