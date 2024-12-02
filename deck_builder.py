@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 
 # TODO:  Add GUI
+# TODO:  Implement resuming from where you left off
 # TODO:  Add a ban-also file
 # TODO:  Add code to apply weights to each pillar
 
@@ -68,7 +69,7 @@ def fitness(df_card_pool, na_deck_list, i_path_size):
     return na_fitness, d_game_states, lt_valid_paths
 
 
-def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, ls_input_deck_list=None):
+def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, ls_input_deck_list=None, d_best_decks_data=None):
 
     # Create initial set of edges
     for s_card in df_card_pool.index:
@@ -107,7 +108,7 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
     na_required_list = np.array(li_required_list)
 
     # Create a vector for input deck list
-    if ls_input_deck_list:
+    if ls_input_deck_list:  
         d_input_deck_card_cnts = cl.Counter(ls_input_deck_list)
         li_input_deck_list = []
         for s_card in df_card_pool.index:
@@ -134,10 +135,10 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
     na_deck_lists = np.array(li_deck_lists)
 
     # Evolve over generations
-    lna_best_decks = np.full((1, na_deck_lists.shape[1]), np.nan)
-    lna_best_decks_fitness = np.array([[-np.inf, -np.inf]])
-    ld_best_decks_path_term_cnt = np.array([np.nan], dtype=object)            # This is for debugging
-    ldlt_best_valid_paths = np.array([np.nan], dtype=object)                  # This is for debugging
+    lna_best_decks = np.full((1, na_deck_lists.shape[1]), np.nan) if d_best_decks_data is None else d_best_decks_data['deck_masks']
+    lna_best_decks_fitness = np.array([[-np.inf, -np.inf]]) if d_best_decks_data is None else d_best_decks_data['fitnesses']
+    ld_best_decks_path_term_cnt = np.array([np.nan], dtype=object) if d_best_decks_data is None else d_best_decks_data['term_cnt']      # This is for debugging
+    ld_best_decks_valid_paths = np.array([np.nan], dtype=object) if d_best_decks_data is None else d_best_decks_data['valid_paths']     # This is for debugging
     for _ in tqdm(range(i_generations), desc='Deck Building'):
 
         # Evaluate fitnesses and update pareto frontier
@@ -170,11 +171,11 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
                 ld_best_decks_path_term_cnt = np.append(ld_best_decks_path_term_cnt, d_path_term_cnt)
 
                 # Update valid paths
-                ldlt_best_valid_paths = ldlt_best_valid_paths[np.logical_not(na_strictly_dominated_deck_idx_mask)]
-                ldlt_best_valid_paths = np.append(ldlt_best_valid_paths, {'valid_paths': lt_valid_paths})
+                ld_best_decks_valid_paths = ld_best_decks_valid_paths[np.logical_not(na_strictly_dominated_deck_idx_mask)]
+                ld_best_decks_valid_paths = np.append(ld_best_decks_valid_paths, {'valid_paths': lt_valid_paths})
 
                 # Calculate deck that would be selected
-                if False:
+                if True:
                     na_best_decks_fitness = np.prod(lna_best_decks_fitness, axis=1)
                     na_best_deck_fitness = lna_best_decks_fitness[np.argmax(na_best_decks_fitness)]
                     d_best_deck_path_term_cnt = ld_best_decks_path_term_cnt[np.argmax(na_best_decks_fitness)]
@@ -183,10 +184,6 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
                     print(f'Fitness #2:\t{list(na_best_deck_fitness)}')
                     print(f'Details:\t{d_best_deck_path_term_cnt}')
                     print(lna_best_decks_fitness.shape) 
-
-                    print('\n\n')
-                    print(lna_best_decks_fitness)
-                    import pdb; pdb.set_trace() 
 
             # Mark as seen
             SET_DECK_LIST_SEEN.add(t_deck_list)  
@@ -223,30 +220,30 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
             lna_children += [na_child_0, na_child_1]
         na_deck_lists = np.vstack([na_deck_lists, np.array(lna_children)])
 
-    # Calculate deck that would be selected
-    na_best_decks_fitness = np.prod(lna_best_decks_fitness, axis=1)
-    na_best_deck = lna_best_decks[np.argmax(na_best_decks_fitness)]
-    na_best_deck_fitness = lna_best_decks_fitness[np.argmax(na_best_decks_fitness)]
-    d_best_deck_path_term_cnt = ld_best_decks_path_term_cnt[np.argmax(na_best_decks_fitness)]
-    print('\n\n')
-    print(f'Fitness #1:\t{np.max(na_best_decks_fitness)}')
-    print(f'Fitness #2:\t{list(na_best_deck_fitness)}')
-    print(f'Details:\t{d_best_deck_path_term_cnt}')
-    print(lna_best_decks_fitness.shape)
-    print(na_best_deck)
+    # Get deck lists
+    lls_best_decks_eng = [df_card_pool.index[np.where(na_best_deck)[0] // 3].tolist() for na_best_deck in lna_best_decks]
 
-    # Generate best deck list
-    ls_best_deck_list = df_card_pool.index[np.where(na_best_deck)[0] // 3].tolist()
+    # Sort
+    lt_best_decks_data = list(zip(lls_best_decks_eng, lna_best_decks, lna_best_decks_fitness, ld_best_decks_path_term_cnt, ld_best_decks_valid_paths))
+    lt_best_decks_data = sorted(lt_best_decks_data, key=lambda x: x[2][0])
+    lls_best_decks_eng, lna_best_decks, lna_best_decks_fitness, ld_best_decks_path_term_cnt, ld_best_decks_valid_paths = zip(*lt_best_decks_data)
+    lls_best_decks_eng = list(lls_best_decks_eng)
+    lna_best_decks = np.vstack(lna_best_decks)
+    lna_best_decks_fitness = np.vstack(lna_best_decks_fitness)
+    ld_best_decks_path_term_cnt = np.array(ld_best_decks_path_term_cnt)
+    ld_best_decks_valid_paths = np.array(ld_best_decks_valid_paths)
 
-    # Check that deck adheres to banned list
-    for s_card, i_cnt in cl.Counter(ls_best_deck_list).items():
-        if s_card in df_banned_list.index:
-            i_cnt_max = df_banned_list.loc[s_card, 'Limit']
-            assert i_cnt <= i_cnt_max, \
-                f'\n\nError:\tCard {s_card} has {i_cnt} copies when the banned list permits {i_cnt_max}'
+    # Structure
+    d_best_decks_data = {
+        'deck_lists': lls_best_decks_eng,
+        'deck_masks': lna_best_decks,
+        'fitnesses': lna_best_decks_fitness,
+        'term_cnt': ld_best_decks_path_term_cnt,
+        'valid_paths': ld_best_decks_valid_paths,
+    }
 
     # Return
-    return ls_best_deck_list
+    return d_best_decks_data
 
 
 def main():
@@ -255,6 +252,9 @@ def main():
     s_banned_list_file = 'banned_list_goat.csv'
     s_required_list_file = 'required_list_goat.csv'
     s_card_pool_file = 'card_pool_chaos_control.csv'
+
+    # Set random seeds
+    np.random.seed(0)
 
     # Read in banned list
     df_banned_list = pd.read_csv(s_banned_list_file, index_col='Card')
@@ -274,18 +274,95 @@ def main():
     assert set(df_card_pool.values.flatten()) == set([0, 1]), \
         '\nError:\tMatrix contains one or more values that are not 0 or 1'
 
-    # Get best deck list
-    ls_best_deck_list = optimize(
+    # Get best decks data
+    d_best_decks_data = optimize(
         df_banned_list=df_banned_list, 
         df_required_list=df_required_list, 
         df_card_pool=df_card_pool, 
         i_deck_size=40, 
         i_path_size=3, 
         i_population=4, 
-        i_generations=1000, 
+        i_generations=500, 
+        f_mutation_rate=0.05,
+        ls_input_deck_list=['Asura Priest', 'Chaos Sorcerer', 'Cyber-Stein', 'Exiled Force', 'Fusilier Dragon, the Dual-Mode Beast', "Gravekeeper's Spy", 'Jinzo', 'Magical Merchant', 'Magician of Faith', 'Mystic Tomato', 'Night Assailant', 'Pyramid Turtle', 'Sangan', 'Shining Angel', 'Sinister Serpent', 'Skilled White Magician', 'Skilled White Magician', 'Spirit Reaper', 'Time Wizard', 'Tsukuyomi', 'Vampire Lord', 'Book of Life', 'Book of Life', 'Book of Moon', 'Brain Control', 'Brain Control', 'Card Destruction', 'Delinquent Duo', 'Heavy Storm', 'Metamorphosis', 'Mind Control', 'Monster Gate', 'Pot of Greed', 'Snatch Steal', 'Upstart Goblin', 'Deck Devastation Virus', 'Mirror Force', 'Phoenix Wing Wind Blast', 'Raigeki Break', 'Sakuretsu Armor'],
+        d_best_decks_data=None,
+    )
+
+
+    import pdb; pdb.set_trace()
+
+
+
+    import matplotlib.pyplot as plt
+
+    # Example Nx2 numpy array
+    points = d_best_decks_data['fitnesses']
+
+    # Separate the array into x and y coordinates
+    x = points[:, 0]
+    y = points[:, 1]
+
+    # Create the plot
+    ###plt.figure(figsize=(8, 6))
+    plt.plot(x, y, color='tab:blue', marker='o', label='Decks')
+
+    # Add labels, title, and legend
+    plt.xlabel('Connectivity')
+    plt.ylabel('Brickless Frequency')
+    plt.title('Fitness Pareto Frontier')
+    plt.legend()
+    ###plt.grid(True)
+
+    # Show the plot
+    plt.show()
+
+
+    # Get best deck data
+    d_best_decks_data = optimize(
+        df_banned_list=df_banned_list, 
+        df_required_list=df_required_list, 
+        df_card_pool=df_card_pool, 
+        i_deck_size=40, 
+        i_path_size=3, 
+        i_population=4, 
+        i_generations=500, 
         f_mutation_rate=0.05,
         ls_input_deck_list=None,
+        d_best_decks_data=d_best_decks_data,
     )
+
+
+    # Example Nx2 numpy array
+    points = d_best_decks_data['fitnesses']
+
+    # Separate the array into x and y coordinates
+    x = points[:, 0]
+    y = points[:, 1]
+
+    # Create the plot
+    ###plt.figure(figsize=(8, 6))
+    plt.plot(x, y, color='tab:blue', marker='o', label='Decks')
+
+    # Add labels, title, and legend
+    plt.xlabel('Connectivity')
+    plt.ylabel('Brickless Frequency')
+    plt.title('Fitness Pareto Frontier')
+    plt.legend()
+    ###plt.grid(True)
+
+    # Show the plot
+    plt.show()
+
+
+
+
+
+    import pdb; pdb.set_trace()
+
+
+
+    # Return
+    #return ls_best_deck_list
 
 
 
