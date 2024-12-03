@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 
 # TODO:  Add GUI
-# TODO:  Add a ban-also file
 
 
 # Define global variables
@@ -68,8 +67,11 @@ def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
     return na_fitness, d_game_states, lt_valid_paths
 
 
-def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, 
+def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, 
              ls_input_deck_list=None, d_best_decks_data=None, d_weights=None):
+
+    # Create unified banned list
+    df_banned_list = pd.concat([df_banned_list, df_restricted_list])
 
     # Create initial set of edges
     for s_card in df_card_pool.index:
@@ -250,6 +252,7 @@ def main():
 
     # Define key variables
     s_banned_list_file = 'banned_list_goat.csv'
+    s_restricted_list_file = 'restricted_list_goat.csv'
     s_required_list_file = 'required_list_goat.csv'
     s_card_pool_file = 'card_pool_chaos_control.csv'
 
@@ -258,6 +261,9 @@ def main():
 
     # Read in banned list
     df_banned_list = pd.read_csv(s_banned_list_file, index_col='Card')
+
+    # Read in restricted list
+    df_restricted_list = pd.read_csv(s_restricted_list_file, index_col='Card')
 
     # Read in required list
     df_required_list = pd.read_csv(s_required_list_file, index_col='Card')
@@ -276,7 +282,8 @@ def main():
 
     # Get best decks data
     d_best_decks_data = optimize(
-        df_banned_list=df_banned_list, 
+        df_banned_list=df_banned_list,
+        df_restricted_list=df_restricted_list,
         df_required_list=df_required_list, 
         df_card_pool=df_card_pool, 
         i_deck_size=40, 
@@ -320,7 +327,8 @@ def main():
 
     # Get best deck data
     d_best_decks_data = optimize(
-        df_banned_list=df_banned_list, 
+        df_banned_list=df_banned_list,
+        df_restricted_list=df_restricted_list,
         df_required_list=df_required_list, 
         df_card_pool=df_card_pool, 
         i_deck_size=40, 
