@@ -9,9 +9,7 @@ from tqdm import tqdm
 
 
 # TODO:  Add GUI
-# TODO:  Implement resuming from where you left off
 # TODO:  Add a ban-also file
-# TODO:  Add code to apply weights to each pillar
 
 
 # Define global variables
@@ -22,7 +20,7 @@ SET_DECK_LIST_SEEN = set()
 D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ = pd.read_pickle('d_card_freq_cnt_to_brickless_freq.pkl')
 
 
-def fitness(df_card_pool, na_deck_list, i_path_size):
+def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
 
     # Determine deck list
     na_deck_list_idxs = np.where(na_deck_list)[0] // 3
@@ -53,7 +51,8 @@ def fitness(df_card_pool, na_deck_list, i_path_size):
     for t_path in lt_valid_paths:
         ls_game_states += D_CARD_TO_GAME_STATE[t_path[-1]]
     d_game_states = cl.Counter(ls_game_states)
-    i_game_state_path_cnt = sum(d_game_states.values())
+    d_weights = cl.defaultdict(lambda: 1.0) if d_weights is None else cl.defaultdict(lambda: 0.0, d_weights)
+    i_game_state_path_cnt = sum(d_game_states[k] * d_weights[k] for k in d_game_states)
     i_game_state_path_cnt = np.power(i_game_state_path_cnt, 1.0 / i_path_size)
 
     # Get brickless frequency
@@ -69,7 +68,8 @@ def fitness(df_card_pool, na_deck_list, i_path_size):
     return na_fitness, d_game_states, lt_valid_paths
 
 
-def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, ls_input_deck_list=None, d_best_decks_data=None):
+def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, 
+             ls_input_deck_list=None, d_best_decks_data=None, d_weights=None):
 
     # Create initial set of edges
     for s_card in df_card_pool.index:
@@ -150,7 +150,7 @@ def optimize(df_banned_list, df_required_list, df_card_pool, i_deck_size, i_path
                 continue
 
             # Get fitness
-            na_fitness, d_path_term_cnt, lt_valid_paths = fitness(df_card_pool, na_deck_list, i_path_size)
+            na_fitness, d_path_term_cnt, lt_valid_paths = fitness(df_card_pool, na_deck_list, i_path_size, d_weights)
 
             # Update pareto frontier
             b_dominates_a_deck = np.any(np.any(na_fitness > lna_best_decks_fitness, axis=1))
@@ -286,6 +286,7 @@ def main():
         f_mutation_rate=0.05,
         ls_input_deck_list=['Asura Priest', 'Chaos Sorcerer', 'Cyber-Stein', 'Exiled Force', 'Fusilier Dragon, the Dual-Mode Beast', "Gravekeeper's Spy", 'Jinzo', 'Magical Merchant', 'Magician of Faith', 'Mystic Tomato', 'Night Assailant', 'Pyramid Turtle', 'Sangan', 'Shining Angel', 'Sinister Serpent', 'Skilled White Magician', 'Skilled White Magician', 'Spirit Reaper', 'Time Wizard', 'Tsukuyomi', 'Vampire Lord', 'Book of Life', 'Book of Life', 'Book of Moon', 'Brain Control', 'Brain Control', 'Card Destruction', 'Delinquent Duo', 'Heavy Storm', 'Metamorphosis', 'Mind Control', 'Monster Gate', 'Pot of Greed', 'Snatch Steal', 'Upstart Goblin', 'Deck Devastation Virus', 'Mirror Force', 'Phoenix Wing Wind Blast', 'Raigeki Break', 'Sakuretsu Armor'],
         d_best_decks_data=None,
+        d_weights={'Plus Your Monsters': 1, 'Plus Your Hand': 1, 'Minus Opponent Monsters': 1, 'Minus Opponent Spell and Trap': 1, 'Minus Opponent Hand': 4},
     )
 
 
@@ -329,6 +330,7 @@ def main():
         f_mutation_rate=0.05,
         ls_input_deck_list=None,
         d_best_decks_data=d_best_decks_data,
+        d_weights=None,
     )
 
 
