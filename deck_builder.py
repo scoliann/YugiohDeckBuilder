@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import collections as cl
 import itertools
+import matplotlib
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 
@@ -17,6 +19,42 @@ SET_VALID_PATHS = set()
 D_CARD_TO_GAME_STATE = {}
 SET_DECK_LIST_SEEN = set()
 D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ = pd.read_pickle('d_card_freq_cnt_to_brickless_freq.pkl')
+
+
+def read_in_data():
+
+    # Define key variables
+    s_banned_list_file = 'banned_list_goat.csv'
+    s_restricted_list_file = 'restricted_list_goat.csv'
+    s_required_list_file = 'required_list_goat.csv'
+    s_card_pool_file = 'card_pool_chaos_control.csv'
+
+    # Set random seeds
+    ###np.random.seed(0)
+
+    # Read in banned list
+    df_banned_list = pd.read_csv(s_banned_list_file, index_col='Card')
+
+    # Read in restricted list
+    df_restricted_list = pd.read_csv(s_restricted_list_file, index_col='Card')
+
+    # Read in required list
+    df_required_list = pd.read_csv(s_required_list_file, index_col='Card')
+
+    # Read in card pool
+    df_card_pool = pd.read_csv(s_card_pool_file, index_col='Card Pool')
+
+    # Check format of card pool file
+    ls_game_states = ['Plus Your Monsters', 'Plus Your Hand', 'Minus Opponent Monsters', 'Minus Opponent Spell and Trap', 'Minus Opponent Hand']
+    assert df_card_pool.columns.tolist()[:5] == ls_game_states, \
+        f'\nError:\tOne of the following columns is missing: {ls_game_states}'
+    assert df_card_pool.columns.tolist()[5:] == df_card_pool.index.tolist(), \
+        '\nError:\tCard name columns do not match card name indices'
+    assert set(df_card_pool.values.flatten()) == set([0, 1]), \
+        '\nError:\tMatrix contains one or more values that are not 0 or 1'
+
+    # Return
+    return df_banned_list, df_restricted_list, df_required_list, df_card_pool
 
 
 def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
@@ -68,7 +106,7 @@ def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
 
 
 def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, 
-             ls_input_deck_list=None, d_best_decks_data=None, d_weights=None):
+             ls_input_deck_list=None, d_best_decks_data=None, d_weights=None, fn_progress_callback=None):
 
     # Create unified banned list
     df_banned_list = pd.concat([df_banned_list, df_restricted_list])
@@ -141,7 +179,11 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
     lna_best_decks_fitness = np.array([[-np.inf, -np.inf]]) if d_best_decks_data is None else d_best_decks_data['fitnesses']
     ld_best_decks_path_term_cnt = np.array([np.nan], dtype=object) if d_best_decks_data is None else d_best_decks_data['term_cnt']      # This is for debugging
     ld_best_decks_valid_paths = np.array([np.nan], dtype=object) if d_best_decks_data is None else d_best_decks_data['valid_paths']     # This is for debugging
-    for _ in tqdm(range(i_generations), desc='Deck Building'):
+    for i_gen in tqdm(range(i_generations), desc='Deck Building'):
+
+        # Update GUI progress bar
+        if fn_progress_callback is not None:
+            fn_progress_callback(i_gen + 1)
 
         # Evaluate fitnesses and update pareto frontier
         for na_deck_list in na_deck_lists:
@@ -218,7 +260,7 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
             na_child_0 = np.abs(na_child_0 - ((np.random.random(len(na_child_0)) < f_mutation_rate) * (na_banned_list - na_required_list)))
             na_child_1 = np.abs(na_child_1 - ((np.random.random(len(na_child_1)) < f_mutation_rate) * (na_banned_list - na_required_list)))
             na_child_0 = clean_up(na_child_0, i_deck_size)
-            na_child_1 = clean_up(na_child_0, i_deck_size)
+            na_child_1 = clean_up(na_child_1, i_deck_size)
             lna_children += [na_child_0, na_child_1]
         na_deck_lists = np.vstack([na_deck_lists, np.array(lna_children)])
 
@@ -248,37 +290,35 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
     return d_best_decks_data
 
 
+def plot_pareto_frontier(d_best_decks_data):
+
+    # Get multi-dimensional fitness values
+    points = d_best_decks_data['fitnesses']
+
+    # Separate individual fitness values into x and y coordinates
+    x = points[:, 0]
+    y = points[:, 1]
+
+    # Create the plot
+    plt.plot(x, y, color='tab:blue', marker='o', label='Decks')
+
+    # Add labels, title, and legend
+    plt.xlabel('Connectivity')
+    plt.ylabel('Brickless Frequency')
+    plt.title('Fitness Pareto Frontier')
+    plt.legend()
+
+    # Show the plot
+    plt.savefig('pareto_frontier.png')
+
+    # Close
+    plt.close()
+
+
 def main():
 
-    # Define key variables
-    s_banned_list_file = 'banned_list_goat.csv'
-    s_restricted_list_file = 'restricted_list_goat.csv'
-    s_required_list_file = 'required_list_goat.csv'
-    s_card_pool_file = 'card_pool_chaos_control.csv'
-
-    # Set random seeds
-    np.random.seed(0)
-
-    # Read in banned list
-    df_banned_list = pd.read_csv(s_banned_list_file, index_col='Card')
-
-    # Read in restricted list
-    df_restricted_list = pd.read_csv(s_restricted_list_file, index_col='Card')
-
-    # Read in required list
-    df_required_list = pd.read_csv(s_required_list_file, index_col='Card')
-
-    # Read in card pool
-    df_card_pool = pd.read_csv(s_card_pool_file, index_col='Card Pool')
-
-    # Check format of card pool file
-    ls_game_states = ['Plus Your Monsters', 'Plus Your Hand', 'Minus Opponent Monsters', 'Minus Opponent Spell and Trap', 'Minus Opponent Hand']
-    assert df_card_pool.columns.tolist()[:5] == ls_game_states, \
-        f'\nError:\tOne of the following columns is missing: {ls_game_states}'
-    assert df_card_pool.columns.tolist()[5:] == df_card_pool.index.tolist(), \
-        '\nError:\tCard name columns do not match card name indices'
-    assert set(df_card_pool.values.flatten()) == set([0, 1]), \
-        '\nError:\tMatrix contains one or more values that are not 0 or 1'
+    # Read in data
+    df_banned_list, df_restricted_list, df_required_list, df_card_pool = read_in_data()
 
     # Get best decks data
     d_best_decks_data = optimize(
@@ -294,7 +334,11 @@ def main():
         ls_input_deck_list=['Asura Priest', 'Chaos Sorcerer', 'Cyber-Stein', 'Exiled Force', 'Fusilier Dragon, the Dual-Mode Beast', "Gravekeeper's Spy", 'Jinzo', 'Magical Merchant', 'Magician of Faith', 'Mystic Tomato', 'Night Assailant', 'Pyramid Turtle', 'Sangan', 'Shining Angel', 'Sinister Serpent', 'Skilled White Magician', 'Skilled White Magician', 'Spirit Reaper', 'Time Wizard', 'Tsukuyomi', 'Vampire Lord', 'Book of Life', 'Book of Life', 'Book of Moon', 'Brain Control', 'Brain Control', 'Card Destruction', 'Delinquent Duo', 'Heavy Storm', 'Metamorphosis', 'Mind Control', 'Monster Gate', 'Pot of Greed', 'Snatch Steal', 'Upstart Goblin', 'Deck Devastation Virus', 'Mirror Force', 'Phoenix Wing Wind Blast', 'Raigeki Break', 'Sakuretsu Armor'],
         d_best_decks_data=None,
         d_weights={'Plus Your Monsters': 1, 'Plus Your Hand': 1, 'Minus Opponent Monsters': 1, 'Minus Opponent Spell and Trap': 1, 'Minus Opponent Hand': 4},
+        fn_progress_callback=None,
     )
+
+    # Create plot
+    plot_pareto_frontier(d_best_decks_data)
 
 
     import pdb; pdb.set_trace()
