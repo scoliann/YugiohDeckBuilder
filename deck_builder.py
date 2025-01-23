@@ -290,7 +290,7 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
     return d_best_decks_data
 
 
-def plot_pareto_frontier(d_best_decks_data):
+def plot_pareto_frontier(d_best_decks_data, i_selected_deck=None):
 
     # Get multi-dimensional fitness values
     points = d_best_decks_data['fitnesses']
@@ -300,13 +300,17 @@ def plot_pareto_frontier(d_best_decks_data):
     y = points[:, 1]
 
     # Create the plot
-    plt.plot(x, y, color='tab:blue', marker='o', label='Decks')
+    plt.plot(x, y, color='tab:blue', marker='o', zorder=1)
+
+    # Highlight selected deck
+    if i_selected_deck is not None:
+        i_deck_idx = i_selected_deck % len(x)
+        plt.scatter(x[i_deck_idx], y[i_deck_idx], color='fuchsia', s=80, zorder=2)
 
     # Add labels, title, and legend
     plt.xlabel('Connectivity')
     plt.ylabel('Brickless Frequency')
     plt.title('Fitness Pareto Frontier')
-    plt.legend()
 
     # Show the plot
     plt.savefig('pareto_frontier.png')
