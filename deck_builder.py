@@ -1,6 +1,8 @@
 
 
 # Do imports
+import os
+import cv2
 import numpy as np
 import pandas as pd
 import collections as cl
@@ -22,6 +24,8 @@ D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ = pd.read_pickle('d_card_freq_cnt_to_brickless
 
 
 def read_in_data():
+
+    # TODO:  Read in actual card pool and check cards in lists below against it
 
     # Define key variables
     s_banned_list_file = 'banned_list_goat.csv'
@@ -317,6 +321,54 @@ def plot_pareto_frontier(d_best_decks_data, i_selected_deck=None):
 
     # Close
     plt.close()
+
+
+def get_deck_image(ls_cards):
+
+    # Define key variables
+    s_dir = 'card_pool'
+    s_csv_file = 'card_pool.csv'
+    i_deck_size = 40
+    i_cards_per_row = 10
+
+    # Read into dataframe
+    df = pd.read_csv(os.path.join(s_dir, s_csv_file))
+
+    # Organize card order
+    ls_monsters = []
+    ls_spells = []
+    ls_traps = []
+    for s_card in sorted(ls_cards):
+        ts_row = df[df['name'] == s_card].iloc[0]
+        s_category = ts_row['category']
+        s_img_path = ts_row['img_path']
+        if s_category == 'Monster':
+            ls_monsters.append((s_card, s_img_path))
+        elif s_category == 'Spell':
+            ls_spells.append((s_card, s_img_path))
+        elif s_category == 'Trap':
+            ls_traps.append((s_card, s_img_path))        
+    ls_cards, ls_img_paths = zip(*(ls_spells + ls_monsters + ls_traps))
+
+    # Divide into rows
+    lls_img_paths = [[]]
+    for s_img_path in ls_img_paths:
+        if len(lls_img_paths[-1]) < i_cards_per_row:
+            lls_img_paths[-1].append(s_img_path)
+        else:
+            lls_img_paths.append([s_img_path])
+
+    # Construct image
+    lna_rows = []
+    for i, ls_img_paths in enumerate(lls_img_paths):
+        lna_imgs = [cv2.imread(os.path.join(s_dir, s_img_path)) for s_img_path in ls_img_paths]
+        na_row = np.hstack(lna_imgs)
+        if lna_rows and lna_rows[-1].shape[1] > na_row.shape[1]:
+            na_filler = np.zeros((na_row.shape[0], lna_rows[-1].shape[1] - na_row.shape[1], 3))
+            na_row = np.hstack([na_row, na_filler])
+        lna_rows.append(na_row)
+    na_deck_img = np.vstack(lna_rows)
+    cv2.imwrite('deck_image.jpg', na_deck_img)
 
 
 def main():
