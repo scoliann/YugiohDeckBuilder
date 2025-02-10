@@ -9,14 +9,18 @@ from tqdm import tqdm
 
 
 # Do local imports
+from args import *
 from yugioh_metadata import *
 
 
 def main():
 
-    # Define key variables
-    s_pickle_file = 'card_pool_raw.pkl'
-    s_csv_file = 'card_pool.csv'
+    # Get directory name
+    s_format_dir = s_card_pool_url.split('format=')[-1]
+
+    # Define input and output files
+    s_pickle_file = os.path.join(s_format_dir, 'card_pool_raw.pkl')
+    s_csv_file = os.path.join(s_format_dir, 'card_pool.csv')
 
     # Read in dataframe
     df = pd.read_pickle(s_pickle_file)
@@ -52,7 +56,7 @@ def main():
     df = df[['tcg_release', 'name', 'category', 'frame', 'type', 'subtype', 'level', 'atk', 'def', 'desc', 'img_url']]
 
     # Download images
-    s_img_dir = 'card_images'
+    s_img_dir = os.path.join(s_format_dir, 'card_images')
     os.makedirs(s_img_dir, exist_ok=True)
     for idx, ts in tqdm(df.iterrows(), total=df.shape[0], desc='Downloading Card Images'):
         s_name = re.sub(r'[^a-zA-Z0-9 ]', '', ts['name']).replace(' ', '_')
@@ -63,7 +67,7 @@ def main():
         urllib.request.urlretrieve(s_img_url, s_img_path)
 
         # Save image path
-        df.loc[df.index[idx], 'img_path'] = s_img_path
+        df.loc[df.index[idx], 'img_path'] = s_img_path.split(os.sep, 1)[-1]
 
     # Save csv
     df.to_csv(s_csv_file, index=False)

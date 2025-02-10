@@ -1,6 +1,7 @@
 
 
 # Do imports
+import os
 import time
 import pandas as pd
 import collections as cl
@@ -12,6 +13,7 @@ from tqdm import tqdm
 
 
 # Do local imports
+from args import s_card_pool_url
 from yugioh_metadata import monster_attributes
 
 
@@ -21,9 +23,14 @@ monster_attributes = [s_attribute.upper() for s_attribute in monster_attributes]
 
 def main():
 
-    # Define key variables
-    s_card_pool_url = 'https://www.formatlibrary.com/cards?format=goat'
-    s_pickle_file = 'card_pool_raw.pkl'
+    # Get directory name
+    s_format_dir = s_card_pool_url.split('format=')[-1]
+
+    # Create format directory
+    os.makedirs(s_format_dir, exist_ok=True)
+
+    # Define output file
+    s_pickle_file = os.path.join(s_format_dir, 'card_pool_raw.pkl')
     
     # Initialize webdriver
     o_options = Options()
