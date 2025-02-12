@@ -1,3 +1,5 @@
+
+# Do imports
 import tkinter as tk
 from tkinter import ttk
 import threading
@@ -7,8 +9,8 @@ import matplotlib
 matplotlib.use('Agg')
 
 # Set global variables
-S_PLOT_IMAGE = "pareto_frontier_init.png"
-S_DECK_IMAGE = "deck_image_init.jpg"
+S_PLOT_IMAGE = "gui/pareto_frontier_init.png"
+S_DECK_IMAGE = "gui/deck_image_init.jpg"
 D_BEST_DECKS_DATA = None
 I_SELECTED_DECK = 0
 
@@ -98,11 +100,11 @@ def on_button_click():
         # Create pareto frontier plot
         I_SELECTED_DECK = 0
         plot_pareto_frontier(D_BEST_DECKS_DATA, I_SELECTED_DECK)
-        S_PLOT_IMAGE = "pareto_frontier.png"
+        S_PLOT_IMAGE = "gui/pareto_frontier.png"
 
         # Get deck list
         ls_deck_list = D_BEST_DECKS_DATA['deck_lists'][I_SELECTED_DECK]
-        S_DECK_IMAGE = "deck_image.jpg"
+        S_DECK_IMAGE = "gui/deck_image.jpg"
 
         # Create deck image
         get_deck_image(ls_deck_list)
@@ -120,7 +122,7 @@ def on_page_click(i_increment):
     global I_SELECTED_DECK
 
     # Update plot
-    if (S_PLOT_IMAGE == "pareto_frontier.png") and (S_DECK_IMAGE == "deck_image.jpg"):
+    if (S_PLOT_IMAGE == "gui/pareto_frontier.png") and (S_DECK_IMAGE == "gui/deck_image.jpg"):
 
         # Increment selected deck
         I_SELECTED_DECK += i_increment

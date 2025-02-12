@@ -7,13 +7,12 @@ import pandas as pd
 import collections as cl
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from tqdm import tqdm
 
 
 # Do local imports
-from args import s_card_pool_url
+from args import s_format
 from yugioh_metadata import monster_attributes
 
 
@@ -23,11 +22,11 @@ monster_attributes = [s_attribute.upper() for s_attribute in monster_attributes]
 
 def main():
 
-    # Get directory name
-    s_format_dir = s_card_pool_url.split('format=')[-1]
+    # Get webpage
+    s_card_pool_url = 'https://www.formatlibrary.com/cards?format=' + s_format
 
     # Create format directory
-    os.makedirs(s_format_dir, exist_ok=True)
+    os.makedirs(s_format, exist_ok=True)
 
     # Define output file
     s_pickle_file = os.path.join(s_format_dir, 'card_pool_raw.pkl')

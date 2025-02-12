@@ -12,7 +12,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 
-# TODO:  Add GUI
+# Do local imports
+from args import *
 
 
 # Define global variables
@@ -28,13 +29,7 @@ def read_in_data():
     # TODO:  Read in actual card pool and check cards in lists below against it
 
     # Define key variables
-    s_banned_list_file = 'banned_list_goat.csv'
-    s_restricted_list_file = 'restricted_list_goat.csv'
-    s_required_list_file = 'required_list_goat.csv'
-    s_card_pool_file = 'card_pool_chaos_control.csv'
-
-    # Set random seeds
-    ###np.random.seed(0)
+    s_banned_list_file = os.path.join(s_format_dir, 'ban_list.csv')
 
     # Read in banned list
     df_banned_list = pd.read_csv(s_banned_list_file, index_col='Card')
@@ -100,7 +95,6 @@ def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
     d_card_freq_cnt = cl.Counter(cl.Counter(na_deck_list_idxs).values())
     t_card_freq_cnt = (d_card_freq_cnt[1], d_card_freq_cnt[2], d_card_freq_cnt[3])
     f_brickless_freq = D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ[t_card_freq_cnt]
-    f_brickless_freq = round(f_brickless_freq, 2)
 
     # Create fitness array
     na_fitness = np.array([i_game_state_path_cnt, f_brickless_freq])
@@ -317,22 +311,16 @@ def plot_pareto_frontier(d_best_decks_data, i_selected_deck=None):
     plt.title('Fitness Pareto Frontier')
 
     # Show the plot
-    plt.savefig('pareto_frontier.png')
+    plt.savefig('gui/pareto_frontier.png')
 
     # Close
     plt.close()
 
 
-def get_deck_image(ls_cards):
-
-    # Define key variables
-    s_dir = 'card_pool'
-    s_csv_file = 'card_pool.csv'
-    i_deck_size = 40
-    i_cards_per_row = 10
+def get_deck_image(ls_cards, i_cards_per_row=10):
 
     # Read into dataframe
-    df = pd.read_csv(os.path.join(s_dir, s_csv_file))
+    df = pd.read_csv(os.path.join(s_format_dir, 'card_pool.csv'))
 
     # Organize card order
     ls_monsters = []
@@ -347,7 +335,7 @@ def get_deck_image(ls_cards):
         elif s_category == 'Spell':
             ls_spells.append((s_card, s_img_path))
         elif s_category == 'Trap':
-            ls_traps.append((s_card, s_img_path))        
+            ls_traps.append((s_card, s_img_path))      
     ls_cards, ls_img_paths = zip(*(ls_spells + ls_monsters + ls_traps))
 
     # Divide into rows
@@ -361,14 +349,14 @@ def get_deck_image(ls_cards):
     # Construct image
     lna_rows = []
     for i, ls_img_paths in enumerate(lls_img_paths):
-        lna_imgs = [cv2.imread(os.path.join(s_dir, s_img_path)) for s_img_path in ls_img_paths]
+        lna_imgs = [cv2.imread(os.path.join(s_format_dir, s_img_path)) for s_img_path in ls_img_paths]
         na_row = np.hstack(lna_imgs)
         if lna_rows and lna_rows[-1].shape[1] > na_row.shape[1]:
             na_filler = np.zeros((na_row.shape[0], lna_rows[-1].shape[1] - na_row.shape[1], 3))
             na_row = np.hstack([na_row, na_filler])
         lna_rows.append(na_row)
     na_deck_img = np.vstack(lna_rows)
-    cv2.imwrite('deck_image.jpg', na_deck_img)
+    cv2.imwrite('gui/deck_image.jpg', na_deck_img)
 
 
 def main():
@@ -385,11 +373,11 @@ def main():
         i_deck_size=40, 
         i_path_size=3, 
         i_population=4, 
-        i_generations=500, 
+        i_generations=50, 
         f_mutation_rate=0.05,
-        ls_input_deck_list=['Asura Priest', 'Chaos Sorcerer', 'Cyber-Stein', 'Exiled Force', 'Fusilier Dragon, the Dual-Mode Beast', "Gravekeeper's Spy", 'Jinzo', 'Magical Merchant', 'Magician of Faith', 'Mystic Tomato', 'Night Assailant', 'Pyramid Turtle', 'Sangan', 'Shining Angel', 'Sinister Serpent', 'Skilled White Magician', 'Skilled White Magician', 'Spirit Reaper', 'Time Wizard', 'Tsukuyomi', 'Vampire Lord', 'Book of Life', 'Book of Life', 'Book of Moon', 'Brain Control', 'Brain Control', 'Card Destruction', 'Delinquent Duo', 'Heavy Storm', 'Metamorphosis', 'Mind Control', 'Monster Gate', 'Pot of Greed', 'Snatch Steal', 'Upstart Goblin', 'Deck Devastation Virus', 'Mirror Force', 'Phoenix Wing Wind Blast', 'Raigeki Break', 'Sakuretsu Armor'],
+        ls_input_deck_list=None,
         d_best_decks_data=None,
-        d_weights={'Plus Your Monsters': 1, 'Plus Your Hand': 1, 'Minus Opponent Monsters': 1, 'Minus Opponent Spell and Trap': 1, 'Minus Opponent Hand': 4},
+        d_weights={'Plus Your Monsters': 1, 'Plus Your Hand': 1, 'Minus Opponent Monsters': 1, 'Minus Opponent Spell and Trap': 1, 'Minus Opponent Hand': 1},
         fn_progress_callback=None,
     )
 
@@ -399,88 +387,6 @@ def main():
 
     import pdb; pdb.set_trace()
 
-
-
-    import matplotlib.pyplot as plt
-
-    # Example Nx2 numpy array
-    points = d_best_decks_data['fitnesses']
-
-    # Separate the array into x and y coordinates
-    x = points[:, 0]
-    y = points[:, 1]
-
-    # Create the plot
-    ###plt.figure(figsize=(8, 6))
-    plt.plot(x, y, color='tab:blue', marker='o', label='Decks')
-
-    # Add labels, title, and legend
-    plt.xlabel('Connectivity')
-    plt.ylabel('Brickless Frequency')
-    plt.title('Fitness Pareto Frontier')
-    plt.legend()
-    ###plt.grid(True)
-
-    # Show the plot
-    plt.show()
-
-
-    # Get best deck data
-    d_best_decks_data = optimize(
-        df_banned_list=df_banned_list,
-        df_restricted_list=df_restricted_list,
-        df_required_list=df_required_list, 
-        df_card_pool=df_card_pool, 
-        i_deck_size=40, 
-        i_path_size=3, 
-        i_population=4, 
-        i_generations=500, 
-        f_mutation_rate=0.05,
-        ls_input_deck_list=None,
-        d_best_decks_data=d_best_decks_data,
-        d_weights=None,
-    )
-
-
-    # Example Nx2 numpy array
-    points = d_best_decks_data['fitnesses']
-
-    # Separate the array into x and y coordinates
-    x = points[:, 0]
-    y = points[:, 1]
-
-    # Create the plot
-    ###plt.figure(figsize=(8, 6))
-    plt.plot(x, y, color='tab:blue', marker='o', label='Decks')
-
-    # Add labels, title, and legend
-    plt.xlabel('Connectivity')
-    plt.ylabel('Brickless Frequency')
-    plt.title('Fitness Pareto Frontier')
-    plt.legend()
-    ###plt.grid(True)
-
-    # Show the plot
-    plt.show()
-
-
-
-
-
-    import pdb; pdb.set_trace()
-
-
-
-    # Return
-    #return ls_best_deck_list
-
-
-
-
-
-
-
-    import pdb; pdb.set_trace()
 
 
 if __name__ == '__main__':
