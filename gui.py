@@ -125,7 +125,7 @@ def on_page_click(i_increment):
     if (S_PLOT_IMAGE == "gui/pareto_frontier.png") and (S_DECK_IMAGE == "gui/deck_image.jpg"):
 
         # Increment selected deck
-        I_SELECTED_DECK += i_increment
+        I_SELECTED_DECK = (I_SELECTED_DECK + i_increment) % len(D_BEST_DECKS_DATA['deck_lists'])
 
         # Create pareto frontier plot
         plot_pareto_frontier(D_BEST_DECKS_DATA, I_SELECTED_DECK)
