@@ -3,6 +3,7 @@
 # Do imports
 import os
 import cv2
+import math
 import numpy as np
 import pandas as pd
 import collections as cl
@@ -17,9 +18,7 @@ from args import *
 
 
 # Define global variables
-SET_INVALID_PATHS = set()
-SET_VALID_PATHS = set()
-D_CARD_TO_GAME_STATE = {}
+D_PATH_TO_GAME_STATE = {}
 SET_DECK_LIST_SEEN = set()
 D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ = pd.read_pickle('d_card_freq_cnt_to_brickless_freq.pkl')
 
@@ -49,8 +48,6 @@ def read_in_data():
         f'\nError:\tOne of the following columns is missing: {ls_game_states}'
     assert df_card_pool.columns.tolist()[5:] == df_card_pool.index.tolist(), \
         '\nError:\tCard name columns do not match card name indices'
-    assert set(df_card_pool.values.flatten()) == set([0, 1]), \
-        '\nError:\tMatrix contains one or more values that are not 0 or 1'
 
     # Return
     return df_banned_list, df_restricted_list, df_required_list, df_card_pool
@@ -62,34 +59,53 @@ def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
     na_deck_list_idxs = np.where(na_deck_list)[0] // 3
     ls_deck_list = df_card_pool.index[na_deck_list_idxs].tolist()
 
-    # Check permutations
-    lt_valid_paths = []
-    for t_path in itertools.chain.from_iterable(itertools.permutations(ls_deck_list, i) for i in range(2, i_path_size+1)):
-        if t_path in SET_VALID_PATHS:
-            lt_valid_paths.append(t_path)
-        elif t_path in SET_INVALID_PATHS:
-            continue
-        else:
-            b_valid = True
-            for i in range(len(t_path)-1):
-                if t_path[i: i+2] not in SET_VALID_PATHS:
-                    b_valid = False
-                    break
-            if b_valid:
-                lt_valid_paths.append(t_path)
-                SET_VALID_PATHS.add(t_path)
-            else:
-                SET_INVALID_PATHS.add(t_path)
-    lt_valid_paths = [tuple([s_card]) for s_card in ls_deck_list] + lt_valid_paths
+    # Calculate factorial
+    i_path_size_fact = math.factorial(i_path_size)
 
-    # Count paths to game states
-    ls_game_states = []
-    for t_path in lt_valid_paths:
-        ls_game_states += D_CARD_TO_GAME_STATE[t_path[-1]]
-    d_game_states = cl.Counter(ls_game_states)
+    # Define a generator to iterate over paths to game states
+    def generate_paths(ls_deck_list, i_path_size, ls_game_states):
+
+        # Generate over combinations
+        for t_path, s_game_state in itertools.product(
+            itertools.combinations(ls_deck_list, i_path_size),
+            ls_game_states,
+        ):
+
+            # Create single path
+            t_path = t_path + (s_game_state,)
+
+            # Yield
+            yield t_path
+
+    # Iterate over all paths to game states
+    d_game_states = cl.defaultdict(lambda: 0.0)
+    for t_path_to_game_state in generate_paths(ls_deck_list, i_path_size, df_card_pool.columns[:5]):
+
+        # Compute fitness
+        if t_path_to_game_state not in D_PATH_TO_GAME_STATE:
+
+            # Compute fitness of new path
+            f_fitness = 1.0
+            for i in range(len(t_path_to_game_state)-1):
+                s_node = t_path_to_game_state[i]
+                s_node_next = t_path_to_game_state[i+1]
+                f_pct = df_card_pool.at[s_node, s_node_next]
+                f_fitness *= f_pct
+
+            # Multiply by number of ways the combination can be made
+            #   Note:  This approach works because nPk = nCk * kPk = nCk * k!
+            f_fitness *= i_path_size_fact
+
+            # Store result
+            D_PATH_TO_GAME_STATE[t_path_to_game_state] = f_fitness
+        
+        # Update
+        d_game_states[t_path_to_game_state[-1]] += D_PATH_TO_GAME_STATE[t_path_to_game_state]
+
+    # Calculate weighted connectivity to game states
     d_weights = cl.defaultdict(lambda: 1.0) if d_weights is None else cl.defaultdict(lambda: 0.0, d_weights)
-    i_game_state_path_cnt = sum(d_game_states[k] * d_weights[k] for k in d_game_states)
-    i_game_state_path_cnt = np.power(i_game_state_path_cnt, 1.0 / i_path_size)
+    f_game_state_path_val = sum(d_game_states[k] * d_weights[k] for k in d_game_states)
+    f_game_state_path_val = np.power(f_game_state_path_val, 1.0 / i_path_size)
 
     # Get brickless frequency
     d_card_freq_cnt = cl.Counter(cl.Counter(na_deck_list_idxs).values())
@@ -97,10 +113,10 @@ def fitness(df_card_pool, na_deck_list, i_path_size, d_weights):
     f_brickless_freq = D_CARD_FREQ_CNT_TO_BRICKLESS_FREQ[t_card_freq_cnt]
 
     # Create fitness array
-    na_fitness = np.array([i_game_state_path_cnt, f_brickless_freq])
+    na_fitness = np.array([f_game_state_path_val, f_brickless_freq])
 
     # Return
-    return na_fitness, d_game_states, lt_valid_paths
+    return na_fitness, dict(d_game_states)
 
 
 def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool, i_deck_size, i_path_size, i_population, i_generations, f_mutation_rate, 
@@ -108,18 +124,6 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
 
     # Create unified banned list
     df_banned_list = pd.concat([df_banned_list, df_restricted_list])
-
-    # Create initial set of edges
-    for s_card in df_card_pool.index:
-        for s_card_supported in df_card_pool.columns[5:]:
-            if df_card_pool.loc[s_card, s_card_supported]:
-                SET_VALID_PATHS.add((s_card, s_card_supported))
-
-    # Create mappings from cards to game states
-    for s_card in df_card_pool.index:
-        ts_game_states = df_card_pool.loc[s_card, df_card_pool.columns[:5]]
-        ls_game_states = ts_game_states[ts_game_states == 1].index.tolist()
-        D_CARD_TO_GAME_STATE[s_card] = ls_game_states
                 
     # Create a vector to enforce the banned list
     li_banned_list = []
@@ -176,7 +180,6 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
     lna_best_decks = np.full((1, na_deck_lists.shape[1]), np.nan) if d_best_decks_data is None else d_best_decks_data['deck_masks']
     lna_best_decks_fitness = np.array([[-np.inf, -np.inf]]) if d_best_decks_data is None else d_best_decks_data['fitnesses']
     ld_best_decks_path_term_cnt = np.array([np.nan], dtype=object) if d_best_decks_data is None else d_best_decks_data['term_cnt']      # This is for debugging
-    ld_best_decks_valid_paths = np.array([np.nan], dtype=object) if d_best_decks_data is None else d_best_decks_data['valid_paths']     # This is for debugging
     for i_gen in tqdm(range(i_generations), desc='Deck Building'):
 
         # Update GUI progress bar
@@ -189,10 +192,11 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
             # If deck list has been seen before, skip
             t_deck_list = tuple(na_deck_list)
             if t_deck_list in SET_DECK_LIST_SEEN:
+                print('\n\nSEEN!!!\n\n')
                 continue
 
             # Get fitness
-            na_fitness, d_path_term_cnt, lt_valid_paths = fitness(df_card_pool, na_deck_list, i_path_size, d_weights)
+            na_fitness, d_path_term_cnt = fitness(df_card_pool, na_deck_list, i_path_size, d_weights)
 
             # Update pareto frontier
             b_dominates_a_deck = np.any(np.any(na_fitness > lna_best_decks_fitness, axis=1))
@@ -211,10 +215,6 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
                 # Update path counts
                 ld_best_decks_path_term_cnt = ld_best_decks_path_term_cnt[np.logical_not(na_strictly_dominated_deck_idx_mask)]
                 ld_best_decks_path_term_cnt = np.append(ld_best_decks_path_term_cnt, d_path_term_cnt)
-
-                # Update valid paths
-                ld_best_decks_valid_paths = ld_best_decks_valid_paths[np.logical_not(na_strictly_dominated_deck_idx_mask)]
-                ld_best_decks_valid_paths = np.append(ld_best_decks_valid_paths, {'valid_paths': lt_valid_paths})
 
                 # Calculate deck that would be selected
                 if True:
@@ -266,14 +266,13 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
     lls_best_decks_eng = [df_card_pool.index[np.where(na_best_deck)[0] // 3].tolist() for na_best_deck in lna_best_decks]
 
     # Sort
-    lt_best_decks_data = list(zip(lls_best_decks_eng, lna_best_decks, lna_best_decks_fitness, ld_best_decks_path_term_cnt, ld_best_decks_valid_paths))
+    lt_best_decks_data = list(zip(lls_best_decks_eng, lna_best_decks, lna_best_decks_fitness, ld_best_decks_path_term_cnt))
     lt_best_decks_data = sorted(lt_best_decks_data, key=lambda x: x[2][0])
-    lls_best_decks_eng, lna_best_decks, lna_best_decks_fitness, ld_best_decks_path_term_cnt, ld_best_decks_valid_paths = zip(*lt_best_decks_data)
+    lls_best_decks_eng, lna_best_decks, lna_best_decks_fitness, ld_best_decks_path_term_cnt = zip(*lt_best_decks_data)
     lls_best_decks_eng = list(lls_best_decks_eng)
     lna_best_decks = np.vstack(lna_best_decks)
     lna_best_decks_fitness = np.vstack(lna_best_decks_fitness)
     ld_best_decks_path_term_cnt = np.array(ld_best_decks_path_term_cnt)
-    ld_best_decks_valid_paths = np.array(ld_best_decks_valid_paths)
 
     # Structure
     d_best_decks_data = {
@@ -281,7 +280,6 @@ def optimize(df_banned_list, df_restricted_list, df_required_list, df_card_pool,
         'deck_masks': lna_best_decks,
         'fitnesses': lna_best_decks_fitness,
         'term_cnt': ld_best_decks_path_term_cnt,
-        'valid_paths': ld_best_decks_valid_paths,
     }
 
     # Return
@@ -373,7 +371,7 @@ def main():
         i_deck_size=40, 
         i_path_size=3, 
         i_population=4, 
-        i_generations=50, 
+        i_generations=500, 
         f_mutation_rate=0.05,
         ls_input_deck_list=None,
         d_best_decks_data=None,
